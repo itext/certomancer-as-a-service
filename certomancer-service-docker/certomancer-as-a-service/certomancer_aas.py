@@ -18,7 +18,6 @@ Note:
 (c) 2021, iText Group NV
 """
 
-
 import base64
 import json
 from dataclasses import dataclass
@@ -29,6 +28,7 @@ import uuid
 
 import yaml
 from asn1crypto import x509
+from certomancer.config_utils import ConfigurationError
 from certomancer.integrations import animator
 from certomancer import registry, config_utils
 from certomancer.registry import ArchLabel
@@ -45,7 +45,7 @@ class Settings(config_utils.ConfigurableMixin):
     redis_host: str
     """Redis host"""
 
-    key_search_dir: str
+    key_dir: str
     """Directory relative to which key paths are computed."""
 
     redis_port: int = 6379
@@ -87,7 +87,8 @@ class RedisBackedCertCache:
         self.redis = redis_instance
         self.arch = arch
         self.ttl = ttl
-        self._get = lru_cache(lru_size)(self._get)
+        if lru_size:
+            self._get = lru_cache(lru_size)(self._get)
 
     def _fmt_item_name(self, item):
         return f'certomancer_{self.arch}_cert_{item}'
@@ -115,11 +116,15 @@ def jsonify_pki_arch(pki_arch: registry.PKIArchitecture, include_pkcs12=False):
         use_pem=False, flat=True, include_pkcs12=include_pkcs12
     )
 
-    result_dict = {
+    certs_dict = {
         name: base64.b64encode(data).decode('ascii')
         for name, data in itr if data is not None
     }
-    return json.dumps(result_dict)
+
+    return json.dumps({
+        'arch_label': str(pki_arch.arch_label),
+        'certs': certs_dict
+    })
 
 
 class RedisBackedArchStore(animator.AnimatorArchStore):
@@ -138,8 +143,9 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
         )
         # LRU cache for architectures to reduce round-trips to redis and
         # reconf operations
-        cacher = lru_cache(settings.local_lru_arch_cache_size)
-        self._get = cacher(self._get)
+        lru_size = settings.local_lru_arch_cache_size
+        if lru_size:
+            self._get = lru_cache(lru_size)(self._get)
         super().__init__(certomancer_config.pki_archs)
 
     def __getitem__(self, item):
@@ -158,7 +164,7 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
         if config_from_redis is None:
             raise NotFound()
         else:
-            self.load_from_yaml(arch, config_from_redis)
+            return self.load_from_yaml(arch, config_from_redis)
 
     def load_from_yaml(self, arch: ArchLabel, config: bytes) \
             -> registry.PKIArchitecture:
@@ -190,8 +196,8 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
 
         try:
             arch = self.load_from_yaml(arch_label, config)
-        except yaml.YAMLError:
-            raise BadRequest()
+        except (yaml.YAMLError, ConfigurationError) as e:
+            raise BadRequest(str(e))
         self.redis.set(
             fmt_arch_config_name(arch_label), config,
             ex=self.settings.redis_key_ttl_seconds
@@ -221,14 +227,13 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
 
 class CertomancerAsAService:
 
-    def __init__(self, initial_config):
+    def __init__(self, initial_config, settings: Settings):
         cfg = dict(initial_config)
         cfg.setdefault('pki-architectures', {})
-        settings_dict = cfg.pop('on-demand-settings')
-        self.settings = settings = Settings.from_config(settings_dict)
+        self.settings = settings
 
         self.certomancer_config = cfg_obj = registry.CertomancerConfig(
-            cfg, key_search_dir=settings.key_search_dir,
+            cfg, key_search_dir=settings.key_dir,
             config_search_dir=settings.config_search_dir
         )
         self.arch_store = arch_store = RedisBackedArchStore(
@@ -245,11 +250,17 @@ class CertomancerAsAService:
         return self._app(environ, start_response)
 
 
-if __name__ == '__main__':
-
+def run_cli():
     from werkzeug.serving import run_simple
     import sys
 
     with open(sys.argv[1], 'r') as inf:
         cfg_data = yaml.safe_load(inf)
-    run_simple('127.0.0.1', 9000, CertomancerAsAService(cfg_data))
+    sett = Settings.from_config(cfg_data.pop('on-demand-settings'))
+    run_simple(
+        '127.0.0.1', 9000, CertomancerAsAService(cfg_data, sett)
+    )
+
+
+if __name__ == '__main__':
+    run_cli()

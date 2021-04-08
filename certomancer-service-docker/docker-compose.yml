@@ -1,0 +1,35 @@
+version: '3.7'
+services:
+  certomancer:
+    image: itextresearch/certomancer-as-a-service
+    build:
+      context: certomancer-as-a-service
+      dockerfile: Dockerfile
+    volumes:
+    - type: "bind"
+      source: "./sample-cfg"
+      target: "/certomancer"
+      read_only: true
+    ports:
+      - "127.0.0.1:9000:80"  # change the bind IP / port to something suitable
+    logging:
+      driver: journald
+    environment:
+      - CERTOMANCER_REDIS_HOST=redis
+    networks:
+      - certomancer-network
+
+  certomancer-redis:
+    image: redis:6-alpine
+    restart: always
+    logging:
+      driver: journald
+    networks:
+      certomancer-network:
+        aliases:
+          - redis
+
+
+networks:
+  certomancer-network:
+    driver: bridge

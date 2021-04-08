@@ -1,12 +1,7 @@
-external-url-prefix: "http://ca.example.com"
-
-on-demand-settings:
-  redis-host: localhost
-  key-search-dir: /home/matthias/git/projects/certomancer
+external-url-prefix: "http://test.test"
 
 keysets:
   testing-ca:
-    path-prefix: tests/data/keys-rsa
     keys:
       root:
         path: root.key.pem
