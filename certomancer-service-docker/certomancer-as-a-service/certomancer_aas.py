@@ -54,22 +54,22 @@ class Settings(config_utils.ConfigurableMixin):
     config_search_dir: Optional[str] = None
     """Directory to scan for PKI architecture files."""
 
-    redis_key_ttl_seconds = 3600
+    redis_key_ttl_seconds: int = 3600
     """
     Time to keep things around in the redis cache
     """
 
-    local_lru_arch_cache_size = 32
+    local_lru_arch_cache_size: int = 32
     """
     Number of architectures kept around in local cache.
     """
 
-    local_lru_cert_cache_size = 16
+    local_lru_cert_cache_size: int = 16
     """
     Number of certs per architecture kept around in local cache.
     """
 
-    submit_resp_include_pkcs12 = False
+    submit_resp_include_pkcs12: bool = False
     """
     Whether to include PKCS #12 archives for all certs in the packet returned
     after a config submission.
