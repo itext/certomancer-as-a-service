@@ -16,6 +16,7 @@ services:
       driver: journald
     environment:
       - CERTOMANCER_REDIS_HOST=redis
+      - CERTOMANCER_SUBMIT_RESP_INCLUDE_PKCS12=true
     networks:
       - certomancer-network
 
