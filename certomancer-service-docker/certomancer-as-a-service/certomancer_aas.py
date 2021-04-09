@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import redis
-import uuid
+import hashlib
 
 import yaml
 from asn1crypto import x509
@@ -204,15 +204,30 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
         return parsed
 
     def register_new_architecture(self, config) -> registry.PKIArchitecture:
-        # TODO: instead of using UUIDs, it might be worth considering
-        #  hashing the config itself. It stands to reason that that would
-        #  greatly improve caching efficiency for parallel test runs.
-        #  The hash would probably have to be seeded by some random value
-        #  (shared by all workers), to avoid stale cache contents persisting
-        #  between runs. To avoid having to rely on specific UWSGI forking
-        #  settings, storing the value in redis on init would probably be ideal.
 
-        arch_label = ArchLabel(str(uuid.uuid4()))
+        # There are probably better hashes than SHA-1 for bucketing purposes,
+        # but meh.
+        config_hash = hashlib.sha1(config).digest()
+        arch_label = ArchLabel(config_hash.hex())
+
+        # Here's the rationale for always performing SET EX in this scenario.
+        # There are two cases:
+        #  - the config hash doesn't exist in redis
+        #    Then we obviously want to insert it
+        #  - the config hash matches one that exists in redis
+        #    In this case, we want to make sure that the TTL for the
+        #    configuration in redis gets reset. Doing this through a normal
+        #    SET allows us to do that without incurring the risk of a race
+        #    condition. The TTL on any potential cached certs is a non-issue.
+
+        # The only drawback of this strategy is that the entire config is sent
+        #  to redis unconditionally, but the overhead for that should be
+        #  negligible.
+        # I *think* SET EX NX would not cause the TTL to be bumped
+        #  (but I'm not sure). If so, that's not an option.
+        # An alternative idea: do an EXISTS check + EXPIRE
+        #  in a pipeline with a WATCH and a conditional SET at the end,
+        #  but I'll file that under "premature optimisation".
 
         try:
             arch = self.load_from_yaml(arch_label, config)
