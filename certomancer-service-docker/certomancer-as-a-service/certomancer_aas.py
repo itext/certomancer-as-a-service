@@ -18,6 +18,7 @@ Note:
 (c) 2021, iText Group NV
 """
 
+import logging
 import base64
 import json
 from dataclasses import dataclass
@@ -38,6 +39,9 @@ from werkzeug import Request, Response
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.exceptions import NotFound, HTTPException, MethodNotAllowed, \
     BadRequest
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -91,6 +95,9 @@ class RedisBackedCertCache:
         result = self.redis.get(self._fmt_item_name(item))
         if result is None:
             raise KeyError(item)
+        logger.debug(
+            "cert '%s' retrieved from cache for arch '%s'", item, self.arch
+        )
         return x509.Certificate.load(result)
 
     def __getitem__(self, item):
@@ -260,6 +267,19 @@ class CertomancerAsAService:
         return self._app(environ, start_response)
 
 
+def logging_setup(level):
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    handler.setFormatter(formatter)
+
+    for name in ('certomancer', __name__):
+        _logger = logging.getLogger(name)
+        _logger.setLevel(level)
+        _logger.addHandler(handler)
+
+
 def run_cli():
     from werkzeug.serving import run_simple
     import sys
@@ -273,4 +293,6 @@ def run_cli():
 
 
 if __name__ == '__main__':
+    logging_setup(logging.DEBUG)
+    logger.debug("Running certomancer_aas development server...")
     run_cli()
