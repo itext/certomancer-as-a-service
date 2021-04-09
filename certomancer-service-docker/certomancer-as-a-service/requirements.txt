@@ -1,4 +1,4 @@
-certomancer==0.3.0-dev1
+certomancer==0.3.0
 redis>=3.5.3
 Werkzeug>=1.0.1
 Jinja2>=2.11.3

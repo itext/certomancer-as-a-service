@@ -69,12 +69,6 @@ class Settings(config_utils.ConfigurableMixin):
     Number of certs per architecture kept around in local cache.
     """
 
-    submit_resp_include_pkcs12: bool = False
-    """
-    Whether to include PKCS #12 archives for all certs in the packet returned
-    after a config submission.
-    """
-
 
 def fmt_arch_config_name(arch: ArchLabel):
     return f'certomancer_{arch}_config'
@@ -111,19 +105,38 @@ class RedisBackedCertCache:
         self.redis.set(item_name, value.dump(), ex=self.ttl)
 
 
-def jsonify_pki_arch(pki_arch: registry.PKIArchitecture, include_pkcs12=False):
-    itr = pki_arch._dump_certs(
-        use_pem=False, flat=True, include_pkcs12=include_pkcs12
-    )
+def b64_asn1(obj):
+    return base64.b64encode(obj.dump()).decode('ascii')
+
+
+def bundle_cert(pki_arch: registry.PKIArchitecture,
+                cert_spec: registry.CertificateSpec):
+    cert_label = cert_spec.label
+    cert = pki_arch.get_cert(cert_label)
+    bundle = {
+        'cert': b64_asn1(cert),
+        'other_certs': [label.value for label in pki_arch.get_chain(cert_label)]
+    }
+
+    # bundle key if available
+    if pki_arch.is_subject_key_available(cert_label):
+        key = pki_arch.key_set.get_private_key(cert_spec.subject_key)
+        bundle['key'] = b64_asn1(key)
+
+    return bundle
+
+
+def jsonify_pki_arch(pki_arch: registry.PKIArchitecture):
 
     certs_dict = {
-        name: base64.b64encode(data).decode('ascii')
-        for name, data in itr if data is not None
+        cert_spec.label.value: bundle_cert(pki_arch, cert_spec)
+        for iss, iss_certs in pki_arch.enumerate_certs_by_issuer()
+        for cert_spec in iss_certs
     }
 
     return json.dumps({
         'arch_label': str(pki_arch.arch_label),
-        'certs': certs_dict
+        'cert_bundles': certs_dict
     })
 
 
@@ -213,10 +226,7 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
                 raise MethodNotAllowed()
             config_data = request.stream.read()
             pki_arch = self.register_new_architecture(config_data)
-            json_data = jsonify_pki_arch(
-                pki_arch,
-                include_pkcs12=self.settings.submit_resp_include_pkcs12
-            )
+            json_data = jsonify_pki_arch(pki_arch)
             resp = Response(json_data, mimetype='application/json')
 
         except HTTPException as e:
