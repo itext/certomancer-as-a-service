@@ -1,4 +1,4 @@
-external-url-prefix: "http://test.test"
+external-url-prefix: "http://localhost:9000"
 
 keysets:
   testing-ca:
