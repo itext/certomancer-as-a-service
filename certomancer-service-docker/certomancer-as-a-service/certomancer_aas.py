@@ -123,7 +123,7 @@ class RedisBackedCertCache:
         if result is None:
             raise KeyError(item)
         logger.debug(
-            "cert '%s' retrieved from cache for arch '%s'", item, self.arch
+            "cert '%s' retrieved from redis for arch '%s'", item, self.arch
         )
         return x509.Certificate.load(result)
 
