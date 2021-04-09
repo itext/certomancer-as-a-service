@@ -22,6 +22,7 @@ import logging
 import base64
 import json
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Optional
 
 import redis
@@ -58,19 +59,45 @@ class Settings(config_utils.ConfigurableMixin):
     config_search_dir: Optional[str] = None
     """Directory to scan for PKI architecture files."""
 
-    redis_key_ttl_seconds: int = 3600
+    redis_cert_ttl: int = 3600
     """
-    Time to keep things around in the redis cache
+    Time to keep certificates around in the redis cache (in seconds)
+    """
+
+    redis_arch_ttl: int = 3600 * 48
+    """
+    Time to keep architecture configurations around in the redis cache
+    (in seconds).
     """
 
     local_lru_arch_cache_size: int = 32
     """
-    Number of architectures kept around in local cache.
+    Number of architectures kept around in local cache. Set to zero to disable
+    caching (note that this also causes all local cert caches to be flushed
+    between requests).
+    """
+
+    local_lru_arch_cache_lifetime: int = 300
+    """
+    Number of seconds after which the local arch cache is flushed, to ensure
+    that architecture configs in redis don't expire on systems where the number
+    of test architectures is low enough to fit inside local cache.
+    
+    (i.e. this ensures that the occasional POST to refresh a configuration will
+    actually hit the redis backend)
+
+    This value should be much lower than redis_arch_ttl.
     """
 
     local_lru_cert_cache_size: int = 16
     """
     Number of certs per architecture kept around in local cache.
+    Set to zero to disable.
+    
+    Note: this cache is tied to the architecture cache. Whenever an architecture
+    object is dropped out of the local cache, the certs that were cached on
+    it will also be discarded (i.e. fetched from redis instead on the next
+    request).
     """
 
 
@@ -165,10 +192,26 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
         # reconf operations
         lru_size = settings.local_lru_arch_cache_size
         if lru_size:
+            # bookkeeping to make sure redis TTLs get updated sufficiently
+            # regularly
+            self.__next_cache_clear = datetime.utcnow()
+            self.__cache_interval = timedelta(
+                seconds=settings.local_lru_arch_cache_lifetime
+            )
             self._get = lru_cache(lru_size)(self._get)
+
         super().__init__(certomancer_config.pki_archs)
 
     def __getitem__(self, item):
+        try:
+            next_cache_clear = self.__next_cache_clear
+            now = datetime.utcnow()
+            if now > next_cache_clear:
+                logger.debug('Clearing local arch cache on timeout...')
+                self.__next_cache_clear = now + self.__cache_interval
+                self._get.cache_clear()
+        except AttributeError:
+            pass
         return self._get(item)
 
     def _get(self, arch: ArchLabel):
@@ -178,6 +221,7 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
         except KeyError:
             pass
 
+        logger.debug('Local cache miss for arch %s', arch)
         # if the specified architecture is not in the local cache, try to
         # grab the config from redis
         config_from_redis = self.redis.get(fmt_arch_config_name(arch))
@@ -197,18 +241,22 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
             key_sets=self.certomancer_config.key_sets,
             external_url_prefix=self.certomancer_config.external_url_prefix,
             cert_cache=RedisBackedCertCache(
-                self.redis, arch, ttl=settings.redis_key_ttl_seconds,
+                self.redis, arch, ttl=settings.redis_cert_ttl,
                 lru_size=settings.local_lru_cert_cache_size
             )
         )
         return parsed
 
     def register_new_architecture(self, config) -> registry.PKIArchitecture:
-
         # There are probably better hashes than SHA-1 for bucketing purposes,
         # but meh.
         config_hash = hashlib.sha1(config).digest()
         arch_label = ArchLabel(config_hash.hex())
+
+        try:
+            return self[arch_label]
+        except (KeyError, NotFound):
+            pass
 
         # Here's the rationale for always performing SET EX in this scenario.
         # There are two cases:
@@ -235,7 +283,7 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
             raise BadRequest(str(e))
         self.redis.set(
             fmt_arch_config_name(arch_label), config,
-            ex=self.settings.redis_key_ttl_seconds
+            ex=self.settings.redis_arch_ttl
         )
         return arch
 
