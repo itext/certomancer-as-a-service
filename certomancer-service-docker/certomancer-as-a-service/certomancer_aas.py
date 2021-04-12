@@ -22,8 +22,7 @@ import logging
 import base64
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict
 
 import redis
 import hashlib
@@ -33,8 +32,7 @@ from asn1crypto import x509
 from certomancer.config_utils import ConfigurationError
 from certomancer.integrations import animator
 from certomancer import registry, config_utils
-from certomancer.registry import ArchLabel
-from functools import lru_cache
+from certomancer.registry import ArchLabel, CertLabel
 
 from werkzeug import Request, Response
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
@@ -70,36 +68,6 @@ class Settings(config_utils.ConfigurableMixin):
     (in seconds).
     """
 
-    local_lru_arch_cache_size: int = 32
-    """
-    Number of architectures kept around in local cache. Set to zero to disable
-    caching (note that this also causes all local cert caches to be flushed
-    between requests).
-    """
-
-    local_lru_arch_cache_lifetime: int = 300
-    """
-    Number of seconds after which the local arch cache is flushed, to ensure
-    that architecture configs in redis don't expire on systems where the number
-    of test architectures is low enough to fit inside local cache.
-    
-    (i.e. this ensures that the occasional POST to refresh a configuration will
-    actually hit the redis backend)
-
-    This value should be much lower than redis_arch_ttl.
-    """
-
-    local_lru_cert_cache_size: int = 16
-    """
-    Number of certs per architecture kept around in local cache.
-    Set to zero to disable.
-    
-    Note: this cache is tied to the architecture cache. Whenever an architecture
-    object is dropped out of the local cache, the certs that were cached on
-    it will also be discarded (i.e. fetched from redis instead on the next
-    request).
-    """
-
 
 def fmt_arch_config_name(arch: ArchLabel):
     return f'certomancer_{arch}_config'
@@ -108,35 +76,47 @@ def fmt_arch_config_name(arch: ArchLabel):
 class RedisBackedCertCache:
 
     def __init__(self, redis_instance: redis.Redis, arch: ArchLabel,
-                 ttl: int, lru_size: int):
+                 ttl: int):
         self.redis = redis_instance
         self.arch = arch
         self.ttl = ttl
-        if lru_size:
-            self._get = lru_cache(lru_size)(self._get)
+
+        # this is reinitialised on every request, so we just dump everything
+        self._cache: Dict[CertLabel, x509.Certificate] = {}
 
     def _fmt_item_name(self, item):
         return f'certomancer_{self.arch}_cert_{item}'
 
-    def _get(self, item):
+    def __getitem__(self, item):
+        try:
+            cert = self._cache[item]
+            logger.debug(
+                "cert '%s' retrieved from local cache for arch '%s'",
+                item, self.arch
+            )
+            return cert
+        except KeyError:
+            pass
+
         result = self.redis.get(self._fmt_item_name(item))
         if result is None:
             raise KeyError(item)
+        cert: x509.Certificate = x509.Certificate.load(result)
         logger.debug(
             "cert '%s' retrieved from redis for arch '%s'", item, self.arch
         )
-        return x509.Certificate.load(result)
-
-    def __getitem__(self, item):
-        return self._get(item)
+        self._cache[item] = cert
+        return cert
 
     def __setitem__(self, item, value):
-        # Do not try to invalidate the __getitem__ cache, since
-        # the cert cache is intended to be write-once
         if not isinstance(value, x509.Certificate):
             raise TypeError
         item_name = self._fmt_item_name(item)
         self.redis.set(item_name, value.dump(), ex=self.ttl)
+        self._cache[item] = value
+        logger.debug(
+            "cert '%s' inserted into cache for arch '%s'", item, self.arch
+        )
 
 
 def b64_asn1(obj):
@@ -188,47 +168,23 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
         self.redis = redis.Redis(
             host=settings.redis_host, port=settings.redis_port
         )
-        # LRU cache for architectures to reduce round-trips to redis and
-        # reconf operations
-        lru_size = settings.local_lru_arch_cache_size
-        if lru_size:
-            # bookkeeping to make sure redis TTLs get updated sufficiently
-            # regularly
-            self.__next_cache_clear = datetime.utcnow()
-            self.__cache_interval = timedelta(
-                seconds=settings.local_lru_arch_cache_lifetime
-            )
-            self._get = lru_cache(lru_size)(self._get)
 
         super().__init__(certomancer_config.pki_archs)
 
-    def __getitem__(self, item):
-        try:
-            next_cache_clear = self.__next_cache_clear
-            now = datetime.utcnow()
-            if now > next_cache_clear:
-                logger.debug('Clearing local arch cache on timeout...')
-                self.__next_cache_clear = now + self.__cache_interval
-                self._get.cache_clear()
-        except AttributeError:
-            pass
-        return self._get(item)
-
-    def _get(self, arch: ArchLabel):
+    def __getitem__(self, item: ArchLabel):
         # Check predefined architectures
         try:
-            return self.architectures[arch]
+            return self.architectures[item]
         except KeyError:
             pass
 
-        logger.debug('Local cache miss for arch %s', arch)
         # if the specified architecture is not in the local cache, try to
         # grab the config from redis
-        config_from_redis = self.redis.get(fmt_arch_config_name(arch))
+        config_from_redis = self.redis.get(fmt_arch_config_name(item))
         if config_from_redis is None:
             raise NotFound()
         else:
-            return self.load_from_yaml(arch, config_from_redis)
+            return self.load_from_yaml(item, config_from_redis)
 
     def load_from_yaml(self, arch: ArchLabel, config: bytes) \
             -> registry.PKIArchitecture:
@@ -242,7 +198,6 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
             external_url_prefix=self.certomancer_config.external_url_prefix,
             cert_cache=RedisBackedCertCache(
                 self.redis, arch, ttl=settings.redis_cert_ttl,
-                lru_size=settings.local_lru_cert_cache_size
             )
         )
         return parsed
@@ -252,11 +207,6 @@ class RedisBackedArchStore(animator.AnimatorArchStore):
         # but meh.
         config_hash = hashlib.sha1(config).digest()
         arch_label = ArchLabel(config_hash.hex())
-
-        try:
-            return self[arch_label]
-        except (KeyError, NotFound):
-            pass
 
         # Here's the rationale for always performing SET EX in this scenario.
         # There are two cases:
