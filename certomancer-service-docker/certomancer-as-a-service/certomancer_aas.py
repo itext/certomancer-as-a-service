@@ -148,9 +148,31 @@ def jsonify_pki_arch(pki_arch: registry.PKIArchitecture):
         for cert_spec in iss_certs
     }
 
+    services = pki_arch.service_registry
+    service_dict = {
+        'time_stamping': {
+            srv.label.value: srv.url
+            for srv in services.list_time_stamping_services()
+        },
+        'ocsp': {
+            srv.label.value: srv.url for srv in services.list_ocsp_responders()
+        },
+        'crl_repo': {
+            srv.label.value: srv.url for srv in services.list_crl_repos()
+        },
+        'cert_repo': {
+            srv.label.value: srv.url for srv in services.list_cert_repos()
+        },
+        'plugin': {
+            f"{srv.plugin_label}_{srv.label}":
+                srv.url for srv in services.list_plugin_services()
+        }
+    }
+
     return json.dumps({
         'arch_label': str(pki_arch.arch_label),
-        'cert_bundles': certs_dict
+        'cert_bundles': certs_dict,
+        'services': service_dict
     })
 
 
