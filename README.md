@@ -42,6 +42,29 @@ The `CertomancerContext` API is pretty straightforward: the `get()` method retri
 (a possible chain of trust, which may or may not be in the right order).
 
 
+## JUnit 4 integration
+
+If you ever want to use Certomancer in JUnit tests, add the `certomancer-junit` module as a dependency. This is probably less helpful for public-facing repositories, because the tests won't run without a Certomancer container available.
+
+Anyway, the `certomancer-junit` module adds another layer of convenience by defining a JUnit rule to load a Certomancer config for an entire test class.
+
+```java
+public class SomeTest {
+    @ClassRule
+    public static final CertomancerResource CERTOMANCER = new CertomancerResource("typical-ocsp-scenario.yml");
+
+    // tests go here
+}
+
+```
+Use `CERTOMANCER.getContext()` to get access to the `CertomancerContext`.
+
+This JUnit rule loads test scenarios from the classpath (the above invocation would look for a resource named `certomancer/typical-ocsp-scenario.yml`).
+
+The configuration URL to use is read off from the `CERTOMANCER_CONFIG_URL` environment variable. Tests that depend on a `CertomancerResource` will be ignored if said environment variable is not set.
+
+
+
 ## A note on portability
 
 Internally, `CertomancerContext` and `CertPackage` use objects from BouncyCastle's "level 2" ASN.1 API. This is a very thin wrapper around its lowest-level ASN.1 API, but more importantly it doesn't interoperate with JCA APIs out of the box.

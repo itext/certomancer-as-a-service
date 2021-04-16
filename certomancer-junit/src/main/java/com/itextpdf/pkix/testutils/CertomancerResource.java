@@ -3,7 +3,10 @@ package com.itextpdf.pkix.testutils;
 import com.itextpdf.test.certomancer.CertomancerConfigManager;
 import com.itextpdf.test.certomancer.CertomancerContext;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.junit.Assume;
 import org.junit.rules.ExternalResource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -14,19 +17,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.Security;
 
 public class CertomancerResource extends ExternalResource {
-    public static final CertomancerConfigManager CERTOMANCER_CONFIG_MANAGER = loadConfigManager();
-    public static final String CERTOMANCER_CONFIG_URL = "http://localhost:9000/config";
-
     static {
         Security.addProvider(new BouncyCastleProvider());
-    }
-
-    private static CertomancerConfigManager loadConfigManager() {
-        try {
-            return new CertomancerConfigManager(new URL(CERTOMANCER_CONFIG_URL));
-        } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     private final String configResourceName;
@@ -37,6 +29,9 @@ public class CertomancerResource extends ExternalResource {
     }
 
     protected void before() throws IOException {
+        String configUrl = System.getenv().get("CERTOMANCER_CONFIG_URL");
+        Assume.assumeNotNull(configUrl);  // skip tests if env var is not present
+        CertomancerConfigManager manager = new CertomancerConfigManager(new URL(configUrl));
         InputStream is = CertomancerResource.class.getClassLoader()
                 .getResourceAsStream("certomancer/" + this.configResourceName);
         if(is == null) {
@@ -44,7 +39,7 @@ public class CertomancerResource extends ExternalResource {
         }
         // Java 9+, but eh
         String yamlConfig = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-        this.certomancerContext = CERTOMANCER_CONFIG_MANAGER.submitConfiguration(yamlConfig);
+        this.certomancerContext = manager.submitConfiguration(yamlConfig);
     }
 
     public CertomancerContext getContext() {
