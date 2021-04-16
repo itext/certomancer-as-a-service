@@ -5,13 +5,10 @@ import com.itextpdf.test.certomancer.CertomancerContext;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.junit.Assume;
 import org.junit.rules.ExternalResource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.Security;
