@@ -94,6 +94,10 @@ public class CertomancerContext {
         return guardMap(this.services.get(ServiceType.PLUGIN));
     }
 
+    public CertPackage get(String label) {
+        return certBundles.get(label);
+    }
+
     public static CertomancerContext fromJson(String json) throws CertomancerException {
 
         // yes, I know this is an antipattern. I don't care.

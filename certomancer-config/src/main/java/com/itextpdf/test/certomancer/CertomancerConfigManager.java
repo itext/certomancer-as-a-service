@@ -40,10 +40,10 @@ public class CertomancerConfigManager {
         // Werkzeug is nice and always writes Content-Length
         byte[] respBytes = new byte[conn.getContentLength()];
         int totalRead = 0;
-        int bytesRead;
+        int bytesRead = 0;
         do {
-            bytesRead = response.read(respBytes, totalRead,respBytes.length - totalRead);
             totalRead += bytesRead;
+            bytesRead = response.read(respBytes, totalRead,respBytes.length - totalRead);
         } while(bytesRead != -1 && totalRead < respBytes.length);
 
         String respString = new String(respBytes, StandardCharsets.UTF_8);
