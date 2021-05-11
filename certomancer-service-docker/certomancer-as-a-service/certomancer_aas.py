@@ -68,6 +68,14 @@ class Settings(config_utils.ConfigurableMixin):
     (in seconds).
     """
 
+    enable_web_ui: bool = False
+    """
+    Whether to enable the web UI (the default is to disable it).
+    Regardless, the web UI only works for architectures defined in the
+    configuration file on-disk, not for architectures that were submitted
+    through the configuration endpoint.
+    """
+
 
 def fmt_arch_config_name(arch: ArchLabel):
     return f'certomancer_{arch}_config'
@@ -292,7 +300,9 @@ class CertomancerAsAService:
             certomancer_config=cfg_obj, settings=settings
         )
 
-        self.animator = animator.Animator(arch_store, with_web_ui=False)
+        self.animator = animator.Animator(
+            arch_store, with_web_ui=settings.enable_web_ui
+        )
 
         self._app = DispatcherMiddleware(
             self.animator, {'/config': self.arch_store}
