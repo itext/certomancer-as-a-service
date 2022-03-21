@@ -1,0 +1,129 @@
+external-url-prefix: "http://localhost:9000"
+
+keysets:
+  testing-ca:
+    keys:
+      root:
+        path: root.key.pem
+        password: secret
+      interm:
+        path: interm.key.pem
+        password: secret
+      tsa:
+        path: tsa.key.pem
+        password: secret
+      tsa2:
+        path: tsa2.key.pem
+        password: secret
+      interm-ocsp:
+        path: interm-ocsp.key.pem
+        password: secret
+      signer1:
+        path: signer.key.pem
+        password: secret
+      signer2:
+        path: signer2.key.pem
+        password: secret
+  lotsofkeys:
+    path-prefix: lotsofkeys
+    keys:
+      key1:
+        path: key1.key.pem
+      key2:
+        path: key2.key.pem
+      key3:
+        path: key3.key.pem
+      key4:
+        path: key4.key.pem
+      key5:
+        path: key5.key.pem
+      key6:
+        path: key6.key.pem
+      key7:
+        path: key7.key.pem
+      key8:
+        path: key8.key.pem
+      key9:
+        path: key9.key.pem
+      key10:
+        path: key10.key.pem
+      key11:
+        path: key11.key.pem
+      key12:
+        path: key12.key.pem
+      key13:
+        path: key13.key.pem
+      key14:
+        path: key14.key.pem
+      key15:
+        path: key15.key.pem
+      key16:
+        path: key16.key.pem
+      key17:
+        path: key17.key.pem
+      key18:
+        path: key18.key.pem
+      key19:
+        path: key19.key.pem
+      key20:
+        path: key20.key.pem
+      key21:
+        path: key21.key.pem
+      key22:
+        path: key22.key.pem
+      key23:
+        path: key23.key.pem
+      key24:
+        path: key24.key.pem
+      key25:
+        path: key25.key.pem
+      key26:
+        path: key26.key.pem
+      key27:
+        path: key27.key.pem
+      key28:
+        path: key28.key.pem
+      key29:
+        path: key29.key.pem
+      key30:
+        path: key30.key.pem
+      key31:
+        path: key31.key.pem
+      key32:
+        path: key32.key.pem
+      key33:
+        path: key33.key.pem
+      key34:
+        path: key34.key.pem
+      key35:
+        path: key35.key.pem
+      key36:
+        path: key36.key.pem
+      key37:
+        path: key37.key.pem
+      key38:
+        path: key38.key.pem
+      key39:
+        path: key39.key.pem
+      key40:
+        path: key40.key.pem
+      key41:
+        path: key41.key.pem
+      key42:
+        path: key42.key.pem
+      key43:
+        path: key43.key.pem
+      key44:
+        path: key44.key.pem
+      key45:
+        path: key45.key.pem
+      key46:
+        path: key46.key.pem
+      key47:
+        path: key47.key.pem
+      key48:
+        path: key48.key.pem
+      key49:
+        path: key49.key.pem
+      key50:
+        path: key50.key.pem
