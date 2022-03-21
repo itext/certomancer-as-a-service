@@ -32,7 +32,9 @@ services:
     depends_on:
       - certomancer-as-a-service
     ports:
-      - "8000:80"
+      - "9000:80"
+    logging:
+      driver: journald
     networks:
       - certomancer-network
 
