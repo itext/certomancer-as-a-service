@@ -1,10 +1,18 @@
-FROM python:3.10-slim
+FROM python:3.9-slim as buildimage
+# Spin up a fresh image to build uwsgi against the system python
 
+RUN apt-get update && apt-get -y install python3-dev g++ && rm -rf /var/lib/apt/lists/*
+RUN pip wheel --wheel-dir=/wheels uwsgi
+
+# Throw out the build image and start over
+FROM python:3.9-slim
 LABEL maintainer="Matthias Valvekens <matthias.valvekens@itextpdf.com>"
 
+
+COPY --from=buildimage /wheels /build
+
 COPY requirements.txt /build/
-RUN apt-get update && apt-get -y install uwsgi uwsgi-plugin-python3 && rm -rf /var/lib/apt/lists/*
-RUN pip install -r /build/requirements.txt && rm -rf /build
+RUN pip install --no-cache-dir /build/*.whl -r /build/requirements.txt && rm -rf /build
 
 
 COPY certomancer-uwsgi.ini /app/uwsgi.ini
