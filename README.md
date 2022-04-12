@@ -136,3 +136,9 @@ Use `CERTOMANCER.getContext()` to get access to the `CertomancerContext`.
 This JUnit rule loads test scenarios from the classpath (the above invocation would look for a resource named `certomancer/typical-ocsp-scenario.yml`).
 
 The configuration URL to use is read off from the `CERTOMANCER_CONFIG_URL` environment variable. Tests that depend on a `CertomancerResource` will be ignored if said environment variable is not set.
+
+## Disclaimer
+
+This is an experimental tool, not an iText product. It is provided to the
+community under the terms of the MIT license (see [LICENSE](LICENSE)) on an
+as-is basis.
